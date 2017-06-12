@@ -1,0 +1,159 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+# Created on 2017-06-08 14:49:49
+# Project: rqv02
+
+from pyspider.libs.base_handler import *
+from pyquery import PyQuery as pq
+import re
+import pandas as pd
+
+url='https://www.ricequant.com/pt_shares'
+    
+# 'html body#page-pt_shares main.row div.container.cf div.pt-share-container.fl.col-hg-6.col-hg-offset-2.col-7.col-offset-1 ul.js-pt-share-list li.pt-share-item div.pt-share-header a'    
+class Handler(BaseHandler):
+
+    crawl_config = { 'itag':'v1'
+    }
+
+    @every(minutes=24 * 60)
+    def on_start(self):
+        self.crawl(url,fetch_type='js', callback=self.index_page)
+
+        
+     #每一页的 所有 top10   
+    @config(age=10 * 24 * 60 * 60 )  # 10 * 24 * 60 * 60
+    def index_page(self, response):
+        
+        # 获取需要的url 直接扔给 detail_page 处理
+        for each in response.doc('html body#page-pt_shares main.row div.container.cf div.pt-share-container.fl.col-hg-6.col-hg-offset-2.col-7.col-offset-1 ul.js-pt-share-list li.pt-share-item div.pt-share-header a').items():
+            if re.match("https://www.ricequant.com/community/pt/\w+", each.attr.href, re.U):
+                self.crawl(each.attr.href ,fetch_type='js', callback=self.detail_page)
+#                print(each.attr.href)
+#                pass
+#                
+                
+                
+        # next page selcetor  402,587,275,359
+        for each in response.doc('#page-pt_shares > main > div.container.cf > div.pt-share-container.fl.col-hg-6.col-hg-offset-2.col-7.col-offset-1 > div.js-pt-share-pagination.js-auto-undelegate > ul > li').items():
+            if (each.text()=='>'):
+#                print("***********************",each.text())
+                self.crawl(url, fetch_type='js', js_script="""
+   function() { 
+    setTimeout("$('html body#page-pt_shares main.row div.container.cf div.pt-share-container.fl.col-hg-6.col-hg-offset-2.col-7.col-offset-1 div.js-pt-share-pagination.js-auto-undelegate ul.pagination li.js-page-to.pagination-btn.pagination-btn-normal')[1].click()",1000); 
+     
+           }
+
+                   """,  callback=self.index_page)  
+                
+                
+ 
+
+# #            if re.match("https://www.ricequant.com/community/pt/\w+", each.attr.href, re.U):
+ #               pass
+#                self.crawl(each.attr.href ,fetch_type='js', callback=self.detail_page)
+
+
+
+
+ 
+        
+    
+       
+ 
+        
+
+    @config(priority=2)
+    def detail_page(self, response):
+        position_recent_time=[]
+        position_recent=[]
+        trainding_recent_time=[]
+        trainding_recent=[]
+        file_name=[]
+        
+       # user_name
+        for each in response.doc('#post-container > li > div.col-md-11.post-block.topic-item > div > a ').items():
+            #pass
+            #print(pq(each).text())
+            user_name=pq(each).text()        
+        
+        
+        
+ 
+        #  最新持仓 的时间
+        for each in response.doc('h2.blue-dot:nth-child(7)').items():
+            #pass
+            #print(pq(each).text())
+            position_recent_time=pq(each).text()
+
+     
+         # 最新持仓 的股票  :nth-child(1)
+        for each in response.doc('section:nth-child(8) > div > div > div > ul > li').items():
+            #pass
+            #print(pq(each).text())
+            string=pq(each).text()
+            string_list=string.split(sep=' ')
+            string_dict={'合约代码':string_list[0],
+             '合约名称': string_list[1],
+             '最新价':float(string_list[2][1:]),
+             '仓位': float(string_list[3]),
+             '市值':float(string_list[4][1:]),
+             '累计盈亏':float(string_list[5].replace('(','-').replace(')','')),
+              'position_recent_time':   position_recent_time ,
+                         'url':response.url
+            }
+#            print(string_dict)
+            position_recent.append(string_dict)
+            
+            # li.gain-item:nth-child(1)
+            
+            
+        #最近交易 的时间
+
+        for each in response.doc('h2.blue-dot:nth-child(10)').items():
+            #pass
+#            print(pq(each).text())
+            trainding_recent_time=pq(each).text()
+        
+        
+        # 最近交易 的股票
+        for each in response.doc('section:nth-child(11) > div > div > div > ul > li').items():
+            #pass
+            #print(pq(each).text())
+            
+            string=pq(each).text()
+            string_list=string.split(sep=' ')
+            string_dict={'时间':string_list[0],
+                 '合约代码' : string_list[1],
+                '合约名称':string_list[2],
+                 '买/卖' : string_list[3],
+                  '成交量':float(string_list[4]),
+                 '成交价' :float(string_list[5][1:]),
+                  '费用':float(string_list[6][1:]),
+                    'trainding_recent_time':trainding_recent_time,
+                         'url':response.url
+}
+            trainding_recent.append(string_dict)
+            #print(string_dict)
+
+        #print(position_recent_time, position_recent,trainding_recent_time,trainding_recent)            
+        pd.DataFrame(position_recent).to_hdf(user_name+'.h5','position')
+        pd.DataFrame(trainding_recent).to_hdf(user_name+'.h5','trading')
+                    
+        #print(response.url)
+        
+#        return {
+#            "position_recent_time": position_recent_time,
+#            "position_recent":str(position_recent).replace('[','').replace(']',''),
+#            "trainding_recent_time":trainding_recent_time,
+#           "trainding_recent":str(trainding_recent).replace('[','').replace(']','')
+#        }        
+        
+        
+#,
+#             "url":response.url
+#
+
+
+
+
