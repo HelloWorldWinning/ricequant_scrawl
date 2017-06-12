@@ -1,3 +1,3 @@
 # ricequant_scrawl
 
-To scawl the trading data of good traders on riceqaunt.com site.
+To scawl the trading data of top 10  traders on riceqaunt.com site.
